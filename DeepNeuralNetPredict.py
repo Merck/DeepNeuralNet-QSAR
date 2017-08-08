@@ -1,29 +1,9 @@
 """
-    Copyright (c) 2011,2012,2016,2017 Merck Sharp & Dohme Corp. a subsidiary of Merck & Co., Inc., Kenilworth, NJ, USA.
-
-    This file is part of the Deep Neural Network QSAR program.
-
-    Deep Neural Network QSAR is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
-"""
-
-"""
 Multi-task Deep Neural Network (DNN) Prediction Program
 
 Inputs:
    - data: a path to data folder that stores the test datasets (.npz file) [Required]
-           if the data folder only contains raw '_test.csv' files, then pre-process will automatically be done.
+           if the data folder only contains raw '_test.csv' files, then pre-process will automatically be done. 
    - model: a FullFilePath, in which a file named DeepNeuralNetParameters.npz stores the trained DNN model for the prediction [Required]
    - output destination: a FullFilePath to specify the output directory [Optional]
    - BatchSize: size of the batch of records to predict at once. [Optional]
@@ -54,7 +34,7 @@ Usage Example:
 Prepared By  Junshui Ma  (Based on George Dahl's Kaggle Code)
 06/12/2014
 
-Last modified by Yuting Xu on Feb.08, 2017
+Last modified by Yuting Xu on Aug.07, 2017
 """
 
 import numpy as num
@@ -200,15 +180,25 @@ def main():
     for p in args.allTestDat:
         print >>log, "loading %s " % (p)
         datasets.append(Dataset(p, VariableParaDict['OutsSize'], None, -1))
+
+    if VariableParaDict['transform'] == 'zscore':
+        prior = 0.01
+        inpsMean = VariableParaDict['trainInpsMean']
+        inpsStddev = VariableParaDict['trainInpsStddev']
+        for i, ds in enumerate(datasets):
+            m = inpsMean[i]
+            s = inpsStddev[i]
+            ds.inps = (ds.inps.toarray().astype(dtype=num.float) - m[num.newaxis,:])/(prior + s[num.newaxis,:])
     
     preproInps = lambda xx: xx.toarray()
     if VariableParaDict['transform'] != None:
-        if VariableParaDict['transform'] == 'standardize':
-            prior = 0.01
+        if VariableParaDict['transform'] == 'zscore':
+            #prior = 0.01
             print >>log, "Removing the saved train-data mean from each dimension and divide it by saved train-data standard deviation (plus %f)." % (prior)
-            inpsMean = VariableParaDict['trainInpsMean']
-            inpsStddev = VariableParaDict['trainInpsStddev']
-            preproInps = lambda xx: (xx.toarray() - inpsMean[num.newaxis,:])/inpsStddev[num.newaxis,:]
+            #inpsMean = VariableParaDict['trainInpsMean']
+            #inpsStddev = VariableParaDict['trainInpsStddev']
+            #preproInps = lambda xx: (xx.toarray() - inpsMean[num.newaxis,:])/(prior + inpsStddev[num.newaxis,:])
+            preproInps = lambda xx: xx
         if VariableParaDict['transform'] == 'sqrt':
             print >>log, "Transforming inputs by taking the square root"
             preproInps = lambda xx: num.sqrt(xx.toarray())
