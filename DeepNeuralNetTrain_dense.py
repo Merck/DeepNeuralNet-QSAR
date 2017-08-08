@@ -1,24 +1,4 @@
 """
-    Copyright (c) 2011,2012,2016,2017 Merck Sharp & Dohme Corp. a subsidiary of Merck & Co., Inc., Kenilworth, NJ, USA.
-
-    This file is part of the Deep Neural Network QSAR program.
-
-    Deep Neural Network QSAR is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
-"""
-
-"""
 Deep Neural Network (DNN) Training Program for DENSE QSAR dataset
 
 Inputs: 
@@ -70,6 +50,7 @@ import dnn
 from DNNSharedFunc import *
 from processData_dense import *
 from DeepNeuralNetPredict import collectPredictions
+from DeepNeuralNetTrain import zscoreByColumn
 
 def sampleMB(mbsz, X, y = None):
     idx = num.random.randint(X.shape[0], size=(mbsz,))
@@ -185,7 +166,7 @@ def buildDNN(args):
 
 
 class Dataset(object):
-    def __init__(self, path, CV = -1):
+    def __init__(self, path, CV = -1, zscore = False):
         self.path = path
 
         featNames, outputNames, molIds, inps, targs = loadPackedData(path)
@@ -226,6 +207,15 @@ class Dataset(object):
      
             self.size = self.inps.shape[0]
 
+        if zscore:
+            self.inps = self.inps.toarray().astype(dtype=num.float)
+            self.trainInpsMean = num.mean(self.inps, axis=0, dtype = num.float)
+            self.trainInpsStddev = num.std(self.inps, axis=0, dtype = num.float)
+            self.inps = zscoreByColumn(self.inps)
+            if CV > 0:
+                self.inpsCV = zscoreByColumn(self.inpsCV,self.trainInpsMean,self.trainInpsStddev)
+        
+
     def perm(self):
         perm = num.random.permutation(self.inps.shape[0])
         self.molIds = self.molIds[perm]
@@ -234,11 +224,13 @@ class Dataset(object):
         if (self.targs is not None) and bool(self.targs.any()):
             self.targs = self.targs[perm]
 
-    def addTest(self, path):
+    def addTest(self, path, zscore = False):
         self.pathTest = path
         self.test = True
         featNamesTest, outputNamesTest, molIdsTest, inpsTest, targsTest = loadPackedData(path)
         self.molIdsTest = molIdsTest
+        if zscore:
+            inpsTest = zscoreByColumn(inpsTest,self.trainInpsMean,self.trainInpsStddev)
         self.inpsTest = inpsTest
         self.origTargsTest = targsTest
         self.outputNamesTest = outputNamesTest
@@ -273,8 +265,8 @@ def parseArgs():
     parser = argparse.ArgumentParser()
     parser.add_argument("--seed", action="store", type=int, default=8, \
 			help = "Seed the random number generator.")
-    parser.add_argument("--transform", default='log', choices = ['sqrt', 'log', 'asinh', 'binarize', None], \
-                        help = 'Transform inputs. sqrt: sqrt(X); log: log(X+1); asinh: log(X+sqrt(1+X^2)); binarize: X=1 if X>0, otherise X=0. (default=log)')
+    parser.add_argument("--transform", default='log', choices = ['sqrt', 'log', 'asinh', 'binarize', 'zscore', None], \
+                        help = 'Transform inputs. sqrt: sqrt(X); log: log(X+1); asinh: log(X+sqrt(1+X^2)); binarize: X=1 if X>0, otherise X=0. zscore: Standardized inputs by column. (default=log)')
     parser.add_argument("--hid", action="append", type=int, default=[],\
 			help = "The number of nodes in each hidden layer.")
     parser.add_argument("--dropout", "--dropouts", action="store", dest='dropoutStr', type=str, default = '0', \
@@ -393,7 +385,7 @@ def main():
     
     # load training datasets
     print >>log, "loading %s " % (args.trainPath)
-    datasets = Dataset(args.trainPath, args.CV)
+    datasets = Dataset(args.trainPath, args.CV, args.transform == 'zscore')
     args.InpsSize = datasets.inpsDim
     args.OutsSize = datasets.targDims
     args.trainingSize = datasets.size
@@ -402,7 +394,7 @@ def main():
     # load paired test datasets
     if args.test:
         print >> log, "loading %s" % (args.testPath)
-        datasets.addTest(args.testPath)
+        datasets.addTest(args.testPath, args.transform == 'zscore')
         print >>log, "Test data: %d molecules" % (datasets.sizeTest)
 
     # only keep several output dimensions
@@ -437,6 +429,9 @@ def main():
         if args.transform == 'asinh':
             print >>log, "Transforming inputs by taking the inverse hyperbolic sine function."
             preproInps = lambda xx: num.arcsinh(xx.toarray())
+        if args.transform == 'zscore':
+            print >>log, "Transforming inputs by standardizing each column (feature)."
+            preproInps = lambda xx: xx
     else:
         print >>log, "No transformation performed on inputs."
         preproInps = lambda xx: xx.toarray()
