@@ -1,24 +1,4 @@
 """
-    Copyright (c) 2011,2012,2016,2017 Merck Sharp & Dohme Corp. a subsidiary of Merck & Co., Inc., Kenilworth, NJ, USA.
-
-    This file is part of the Deep Neural Network QSAR program.
-
-    Deep Neural Network QSAR is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
-"""
-
-"""
 Multi-task Deep Neural Network (DNN) Training Program - for sparse dataset(s)
 
 Inputs: 
@@ -56,7 +36,7 @@ Usage Examples:
 Prepared By  Junshui Ma  (Based on George Dahl's Kaggle Code)
 06/12/2014
 
-Last modified by Yuting Xu on Feb.08, 2017
+Last modified by Yuting Xu on Aug.07, 2017
 """
 
 import numpy as num
@@ -73,6 +53,30 @@ import dnn
 from DNNSharedFunc import *
 from processData_sparse import *
 from DeepNeuralNetPredict import collectPredictions
+
+def zscoreByColumn(inps, m = None, s = None):
+    """
+    For training inps, standarize inps by column
+    For validation/test inps, standarize columns by the given 
+        m: trainInpsMean
+        s: trainInpsStddev
+    """
+    if not isinstance(inps, num.ndarray):
+        inps = inps.toarray().astype(dtype=num.float)
+    else:
+        inps = inps.astype(dtype=num.float)
+    if m is None:
+        inps = inps-inps.mean(axis=0)
+    else:
+        inps = inps - m[num.newaxis,:]
+    if s is None:
+        s = num.std(inps,axis=0,dtype=num.float)
+    prior = 0.01
+    inps = inps/(prior+s[num.newaxis,:])
+    #for j in range(inps.shape[1]):
+    #    if s[j] > 0.1:
+    #        inps[:,j] = inps[:,j]/s[j]
+    return inps
 
 def summarizePreds(net, datasets, inpPreproFunct, useDropout = False, datatype = 0):
     """
@@ -182,14 +186,14 @@ def buildDNN(args):
 
 
 class Dataset(object):
-    def __init__(self, path, targDims, dsId, CV = -1):
+    def __init__(self, path, targDims, dsId, CV = -1, zscore = False):
         self.datName = os.path.basename(path).split("_")[0]
         self.path = path
         self.targDims = targDims
         self.dsId = dsId
         
         featNames, molIds, inps, targs = loadPackedData(path)
-        self.molIds = molIds
+        self.molIds = molIds        
         self.inps = inps
         self.origTargs = targs
         self.featNames = featNames
@@ -221,8 +225,15 @@ class Dataset(object):
             self.targs = delete_rows(self.targs,idCV)
             if dsId is not None:
                 self.targsFull = delete_rows(self.targsFull,idCV)
-            
             self.size = self.inps.shape[0]
+            
+        if zscore:
+            self.inps = self.inps.toarray().astype(dtype=num.float)
+            self.trainInpsMean = num.mean(self.inps, axis=0, dtype = num.float)
+            self.trainInpsStddev = num.std(self.inps, axis=0, dtype = num.float)
+            self.inps = zscoreByColumn(self.inps)
+            if CV > 0:
+                self.inpsCV = zscoreByColumn(self.inpsCV,self.trainInpsMean,self.trainInpsStddev)
         
     def perm(self):
         perm = num.random.permutation(self.inps.shape[0])
@@ -233,10 +244,12 @@ class Dataset(object):
             self.targs = self.targs[perm]
             self.targsFull = self.targsFull[perm]
 
-    def addTest(self, path):
+    def addTest(self, path, zscore = False):
         assert(self.datName == os.path.basename(path).split("_")[0]) # check the name of test set is the same as training set
         self.pathTest = path
         featNamesTest, molIdsTest, inpsTest, targsTest = loadPackedData(path)
+        if zscore:
+            inpsTest = zscoreByColumn(inpsTest,self.trainInpsMean,self.trainInpsStddev)
         self.molIdsTest = molIdsTest
         self.inpsTest = inpsTest
         self.origTargsTest = targsTest
@@ -254,7 +267,10 @@ def sampleMBFromAll(casesPerTask, datasets):
         inpsList.append(datasets[i].inps[idx])
         targs[sum(casesPerTask[:i]):sum(casesPerTask[:(i+1)])] = datasets[i].targsFull[idx]
         targsMask[sum(casesPerTask[:i]):sum(casesPerTask[:(i+1)]), i] = 1
-    inps = sp.vstack(inpsList)
+    if isinstance(inpsList[0], num.ndarray):
+        inps = num.vstack(inpsList)
+    else:
+        inps = sp.vstack(inpsList)
     return inps, targs, targsMask
 
 def allMB_multi(casesPerTask,datasets,mbNumber):
@@ -272,7 +288,10 @@ def allMB_multi(casesPerTask,datasets,mbNumber):
         inpsList.append(datasets[i].inps[idx])
         targs[sum(casesPerTask[:i]):sum(casesPerTask[:(i+1)])] = datasets[i].targsFull[idx]
         targsMask[sum(casesPerTask[:i]):sum(casesPerTask[:(i+1)]), i] = 1
-    inps = sp.vstack(inpsList)
+    if isinstance(inpsList[0], num.ndarray):
+        inps = num.vstack(inpsList)
+    else:
+        inps = sp.vstack(inpsList)
     return inps, targs, targsMask    
     
 
@@ -280,8 +299,8 @@ def parseArgs():
     parser = argparse.ArgumentParser()
     parser.add_argument("--seed", action="store", type=int, default=8, \
 			help = "Seed the random number generator.")
-    parser.add_argument("--transform", default='log', choices = ['sqrt', 'log', 'asinh', 'binarize', None], \
-                        help = 'Transform inputs. sqrt: sqrt(X); log: log(X+1); asinh: log(X+sqrt(1+X^2)); binarize: X=1 if X>0, otherise X=0. (default=log)')
+    parser.add_argument("--transform", default='log', choices = ['sqrt', 'log', 'asinh', 'binarize', 'zscore', None], \
+                        help = 'Transform inputs. sqrt: sqrt(X); log: log(X+1); asinh: log(X+sqrt(1+X^2)); binarize: X=1 if X>0, otherise X=0; zscore: Standardized inputs by column. (default=log)')
     parser.add_argument("--hid", action="append", type=int, default=[],\
 			help = "The number of nodes in each hidden layer.")
     parser.add_argument("--dropout", "--dropouts", action="store", dest='dropoutStr', type=str, default = '0', \
@@ -417,7 +436,7 @@ def main():
     args.datasets_sizes = []
     for p in args.allTrainingDat:
         print >>log, "loading %s " % (p)
-        datasets.append(Dataset(p, len(args.allTrainingDat), dsId, args.CV))
+        datasets.append(Dataset(p, len(args.allTrainingDat), dsId, args.CV, args.transform == 'zscore'))
         args.datasets_sizes.append(datasets[-1].size)
         dsId += 1
     args.InpsSize = datasets[0].inpsDim
@@ -431,7 +450,7 @@ def main():
                 print >> log, "Cannot find %s. Use training set as test set. " % (p)
                 p = os.path.join(args.dataPath,os.path.basename(p).split("_")[0]+"_training.npz")               
             print >> log, "loading %s" % (p)
-            datasets[dsId].addTest(p)
+            datasets[dsId].addTest(p, args.transform == 'zscore')
             dsId += 1
 
     # Calculate miniBatch sizes (args.mbsz) and number of miniBatches per epoch (args.mbPerEpoch)
@@ -455,6 +474,13 @@ def main():
         args.targMean.append(dat.targMean)
         args.targStd.append(dat.targStd)
 
+    # if apply zscore transformation, save all trainInpsMean, trainInpsStddev in args since they are important model parameters
+    args.trainInpsMean = []
+    args.trainInpsStddev = []
+    for dat in datasets:
+        args.trainInpsMean.append(dat.trainInpsMean)
+        args.trainInpsStddev.append(dat.trainInpsStddev)
+
     # transform input features
     if args.transform != None:
         if args.transform == 'sqrt':
@@ -469,6 +495,9 @@ def main():
         if args.transform == 'asinh':
             print >>log, "Transforming inputs by taking the inverse hyperbolic sine function."
             preproInps = lambda xx: num.arcsinh(xx.toarray())
+        if args.transform == 'zscore':
+            print >>log, "Transforming inputs by standardizing each column (feature)."
+            preproInps = lambda xx: xx
     else:
         print >>log, "No transformation performed on inputs."
         preproInps = lambda xx: xx.toarray()
