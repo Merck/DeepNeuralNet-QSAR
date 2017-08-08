@@ -415,6 +415,13 @@ def main():
     args.targMean = datasets.targMean
     args.targStd = datasets.targStd
 
+    # if apply zscore transformation, save all trainInpsMean, trainInpsStddev in args since they are important model parameters
+    if args.transform == 'zscore':
+        args.trainInpsMean = []
+        args.trainInpsStddev = []
+        args.trainInpsMean.append(datasets.trainInpsMean)
+        args.trainInpsStddev.append(datasets.trainInpsStddev)
+    
     # transform input features
     if args.transform != None:
         if args.transform == 'sqrt':

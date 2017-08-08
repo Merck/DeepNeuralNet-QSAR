@@ -475,11 +475,12 @@ def main():
         args.targStd.append(dat.targStd)
 
     # if apply zscore transformation, save all trainInpsMean, trainInpsStddev in args since they are important model parameters
-    args.trainInpsMean = []
-    args.trainInpsStddev = []
-    for dat in datasets:
-        args.trainInpsMean.append(dat.trainInpsMean)
-        args.trainInpsStddev.append(dat.trainInpsStddev)
+    if args.transform == 'zscore':
+        args.trainInpsMean = []
+        args.trainInpsStddev = []
+        for dat in datasets:
+            args.trainInpsMean.append(dat.trainInpsMean)
+            args.trainInpsStddev.append(dat.trainInpsStddev)
 
     # transform input features
     if args.transform != None:
