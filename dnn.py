@@ -152,7 +152,8 @@ class DNN(object):
             d['biases'][0] = numpyify(self.biases)[0]
         else:
             d['weights'] = num.array(numpyify(self.weights)).flatten()
-            d['biases'] = num.array(numpyify(self.biases)).flatten()
+            #d['biases'] = num.array(numpyify(self.biases)).flatten()
+            d['biases'] = num.array([bb.flatten() for bb in numpyify(self.biases)])
         d['outputActFunct'] = self.outputActFunct.__class__.__name__
         return d
         
