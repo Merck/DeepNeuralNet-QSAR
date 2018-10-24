@@ -14,8 +14,8 @@ Acknowledgement:
 	This set of codes were developed based on George Dahl's Kaggle codes in Dec. 2012.
 
 If you use the DeepNeuralNet_QSAR for scientific work that gets published, you should include in that publication a citation of the paper below:
-"Demystifying Multi-Task Deep Neural Networksfor Quantitative Structure-Activity Relationships" 
-by Yuting Xu, Junshui Ma, Andy Liaw, Robert Sheridan and Vladimir Svetnik.
+
+Xu, Yuting, Junshui Ma, Andy Liaw, Robert P. Sheridan, and Vladimir Svetnik. "Demystifying Multitask Deep Neural Networks for Quantitative Structure–Activity Relationships." Journal of chemical information and modeling 57, no. 10 (2017): 2490-2504.
 
 
 ===================================================================
